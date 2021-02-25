@@ -360,7 +360,7 @@ void RunningScreen() {
         tft.setFreeFont(FMB12);
         tft.setTextColor(TFT_BLUE);
         tft.drawString(waveform_names[(int)homescreen_waveform], 160, 72);
-        tft.setTextColor(tft.color565(224,225,232));
+        
         tft.setCursor(35, 140);
 
 
