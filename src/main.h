@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "Free_Fonts.h"
 #include "TFT_eSPI.h"
+#include <Adafruit_ZeroDMA.h>
 #include "Adafruit_ZeroTimer.h"
 
 #define CONFIGURE_FREQUENCY_WIDTH 30
@@ -12,7 +13,6 @@
 
 enum class Waveform {SQUARE=0, SINE=1, RAMP=2, TRIANGLE=3};
 enum class FunctionGeneratorProgramState {HOMESCREEN, CONFIGURE_FREQUENCY, CONFIGURE_DUTY, RUNNING, RUNFOREVER};
-
 
 typedef struct {
   tc_clock_prescaler prescaler;
@@ -26,6 +26,13 @@ void HomeScreen_drawSine(bool fill);
 void HomeScreen_drawRamp(bool fill);
 void HomeScreen_drawTriangle(bool fill);
 
+void FillSineWaveLookup();
+void FillTriangleLookup();
+void FillRampLookup();
+
+void StartWaveform(uint16_t *waveform, long freq);
+
+
 void HomeScreen_draw();
 Waveform HomeScreen_nextWaveform();
 void HomeScreen_redraw(Waveform current, Waveform next);
@@ -34,5 +41,7 @@ void FrequencyScreen_redraw();
 void ConfigureDutyScreen();
 void DutyScreen_redraw();
 void RunningScreen();
+
+
 
 #endif

@@ -1,6 +1,7 @@
 #include "main.h"
 
 Adafruit_ZeroTimer zt4 = Adafruit_ZeroTimer(4);
+Adafruit_ZeroDMA myDMA;
 TFT_eSPI tft = TFT_eSPI();
 
 
@@ -12,6 +13,10 @@ uint8_t squarewave_frequency[8] = {0,0,0,0,0,0,0,0};
 uint8_t squarewave_digitoffset[8] = {9,8,7,5,4,3,1,0};
 uint8_t squarewave_currentpos = 7;
 uint8_t squarewave_dutycycle = 50;
+
+uint16_t sinewave_lookup[NUMBEROFPOINTS];
+uint16_t triangle_lookup[NUMBEROFPOINTS];
+uint16_t ramp_lookup[NUMBEROFPOINTS];
 
 void setup() {
   Serial.begin(115200);
@@ -25,8 +30,11 @@ void setup() {
   pinMode(WIO_5S_LEFT, INPUT_PULLUP);
   pinMode(WIO_5S_RIGHT, INPUT_PULLUP);
   pinMode(WIO_5S_PRESS, INPUT_PULLUP);
-
   pinMode(D1, OUTPUT);
+
+  FillSineWaveLookup();
+  FillRampLookup();
+  FillTriangleLookup();
 
   HomeScreen_draw();
 }
@@ -92,7 +100,6 @@ void loop() {
   else if (state == FunctionGeneratorProgramState::CONFIGURE_DUTY &&  digitalRead(WIO_5S_PRESS) == LOW) {
     state = FunctionGeneratorProgramState::RUNNING;
     RunningScreen();
-    state = FunctionGeneratorProgramState::RUNFOREVER;
   }
 
   else if (state == FunctionGeneratorProgramState::CONFIGURE_DUTY &&  digitalRead(WIO_5S_UP) == LOW) {
@@ -128,12 +135,10 @@ void loop() {
     }
   }
 
-  else if (state == FunctionGeneratorProgramState::RUNNING &&  digitalRead(WIO_5S_PRESS) == LOW) {
+  if (state == FunctionGeneratorProgramState::RUNNING &&  digitalRead(WIO_5S_PRESS) == LOW) {
     state = FunctionGeneratorProgramState::HOMESCREEN;
     HomeScreen_draw();
   }
-
-
 
   delay(90);
  
@@ -211,6 +216,8 @@ void HomeScreen_drawTriangle(bool fill) {
 }
 
 void HomeScreen_draw() {
+  homescreen_waveform = Waveform::SQUARE;
+
     tft.fillScreen(TFT_BLUE);
 
   tft.setTextDatum(MC_DATUM);
@@ -383,10 +390,20 @@ void RunningScreen() {
           StartSquareWaveform(freq, squarewave_dutycycle);
         }
 
-        //if (homescreen_waveform == Waveform::RAMP) {
-        //  Serial.println("Start ramp  waveform");
-        //  StartRampWaveform();
-        //}
+        else if (homescreen_waveform == Waveform::SINE) {
+          Serial.println("Start sine  waveform");
+          StartWaveform(sinewave_lookup, freq);
+        }
+
+        else if (homescreen_waveform == Waveform::RAMP) {
+          Serial.println("Start ramp  waveform");
+          StartWaveform(ramp_lookup, freq);
+        }
+
+        else if (homescreen_waveform == Waveform::TRIANGLE) {
+          Serial.println("Start triangle  waveform");
+          StartWaveform(triangle_lookup, freq);
+        }        
 }
 
 void StartSquareWaveform(long freq, uint8_t duty) {
@@ -416,6 +433,27 @@ void StartSquareWaveform(long freq, uint8_t duty) {
 
   zt4.setPeriodMatch(compare, match, 1);
   zt4.enable(true);
+}
+
+void StartWaveform(uint16_t *waveform, long freq) {
+  zt4.enable(false);
+  Timer4Params params = configureTimerParams(freq);
+  uint32_t compare = (uint32_t) params.compare;
+  zt4.configure(params.prescaler, // prescaler
+                TC_COUNTER_SIZE_16BIT,   // bit width of timer/counter
+                TC_WAVE_GENERATION_MATCH_FREQ // frequency or PWM mode ( TC_WAVE_GENERATION_NORMAL_PWM, TC_WAVE_GENERATION_MATCH_PWM)
+                );
+
+  zt4.setCompare(0, compare);
+  zt4.enable(true);
+
+  myDMA.setTrigger(TC4_DMAC_ID_OVF);
+  myDMA.setAction(DMA_TRIGGER_ACTON_BEAT);
+  myDMA.allocate();
+  myDMA.loop(true);
+  myDMA.addDescriptor(waveform, (void *)&DAC->DATA[0].reg, NUMBEROFPOINTS, DMA_BEAT_SIZE_HWORD, true, false);
+  
+  myDMA.startJob();
 }
 
 
@@ -485,4 +523,33 @@ void DutyScreen_redraw() {
         tft.fillRect(0,100,240,120, TFT_RED);
         tft.setFreeFont(FF44);
         tft.drawNumber(squarewave_dutycycle, 160,130);
+}
+
+void FillSineWaveLookup() {
+  float phase = TWO_PI/NUMBEROFPOINTS;
+
+  for (int i=0; i<NUMBEROFPOINTS; i++) {
+     sinewave_lookup[i] = (uint16_t) (-2000.f * cosf(phase * i) + 4096.f/2);
+  }
+}
+
+void FillTriangleLookup() {
+  for (int i=0; i<NUMBEROFPOINTS; i++) {
+    triangle_lookup[i] = (uint16_t) ( 4096/2 + 2000 * fabsf(roundf(1.f * i /NUMBEROFPOINTS) - (1.f * i /NUMBEROFPOINTS)));
+  }
+}
+
+void FillRampLookup() {
+  for (int i=0; i<NUMBEROFPOINTS; i++) {
+    ramp_lookup[i] = i * 3000/(1.f * (NUMBEROFPOINTS - 1));
+  }
+}
+
+void dump(uint16_t *lookup) {
+  for(int i=0; i<10; i++) {
+    for (int j=0; j<10; j++) {
+      Serial.printf("%d:%d  ", 10*i + j, lookup[10 * i + j]);
+    }
+   Serial.println(); 
+  }
 }
